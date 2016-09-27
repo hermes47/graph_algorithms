@@ -249,8 +249,8 @@ void check_algo_connected_subgraphs(Graph G) {
     
 
     
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-    std::cout << duration << " microseconds vs ~49000 microseconds in Python.\n";
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
+    std::cout << duration << " nanoseconds vs ~49000 microseconds in Python.\n";
 }
 
 int main(int argc, const char * argv[]) {

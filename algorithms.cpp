@@ -15,18 +15,26 @@
 #include <stack>
 #include <algorithm>
 #include <iostream>
+#include <chrono>
+#include <iterator>
 
 using namespace std;
+using namespace std::chrono;
 
 namespace mrsuper {
     int weight(Graph* G, vector<Vertex> g) {
-        int w = 0;
-        vector<Vertex>::iterator g_it = g.begin();
-        for (; g_it != g.end(); ++g_it) {
-            VertexProperties p = G->properties(*g_it);
-            w += p.weight;
+        if (!g.size() || !G->properties(*g.begin()).weight) {
+            return static_cast<int>(g.size());
         }
-        return w;
+        else {
+            int w = 0;
+            vector<Vertex>::iterator g_it = g.begin();
+            for (; g_it != g.end(); ++g_it) {
+                VertexProperties p = G->properties(*g_it);
+                w += p.weight;
+            }
+            return w;
+        }
     }
     
     
@@ -35,10 +43,14 @@ namespace mrsuper {
                                             int minsize, int maxsize) {
         
         list<vector<Vertex>> subGs;
+        nanoseconds push_time(0);
+        high_resolution_clock::time_point start, end;
         // All future combinations of things should be in sorted order
         sort(bag.begin(), bag.end());
         sort(g.begin(), g.end());
         sort(nbrs.begin(), nbrs.end());
+        
+        cout << "Sort time: " << push_time.count() << " nanoseconds.\n";
         
         stack<vector<Vertex>> bag_s;
         stack<vector<Vertex>> g_s;
@@ -46,6 +58,11 @@ namespace mrsuper {
         bag_s.push(bag);
         g_s.push(g);
         nbrs_s.push(nbrs);
+        
+        vector<Vertex> bag_minus_v, g_union_v, nbrs_union_neighbours;
+        bag_minus_v.reserve(G->order());
+        g_union_v.reserve(G->order());
+        nbrs_union_neighbours.reserve(G->order());
         
         while (!bag_s.empty()) {
             bag = bag_s.top();
@@ -55,17 +72,13 @@ namespace mrsuper {
             nbrs = nbrs_s.top();
             nbrs_s.pop();
             
-            unsigned long count = bag.size();
-
-            vector<Vertex> poss(count);
-            vector<Vertex>::iterator poss_it;
+            vector<Vertex> poss;
             
             if (g.empty()) {
                 poss = bag;
             }
             else {
-                poss_it = set_intersection(bag.begin(), bag.end(), nbrs.begin(), nbrs.end(), poss.begin());
-                poss.resize(poss_it - poss.begin());
+                set_intersection(bag.begin(), bag.end(), nbrs.begin(), nbrs.end(), back_inserter(poss));
             }
             
             int g_weight = weight(G, g);
@@ -78,26 +91,21 @@ namespace mrsuper {
                     
                     vector<Vertex> v_vec {v};
                     
-                    vector<Vertex> neighbours_vec;
                     pair<NeighboursIt, NeighboursIt> np = G->neighbours(v);
-                    for (; np.first != np.second; ++np.first) {
-                        neighbours_vec.push_back(*np.first);
-                    }
+                    vector<Vertex> neighbours_vec(np.first, np.second);
                     sort(neighbours_vec.begin(), neighbours_vec.end());
                     
-                    vector<Vertex> bag_minus_v(bag.size() -1);
-                    vector<Vertex> g_union_v(g.size() +1);
-                    vector<Vertex> nbrs_union_neighbours(nbrs.size() + neighbours_vec.size());
+                    bag_minus_v.clear();
+                    g_union_v.clear();
+                    nbrs_union_neighbours.clear();
                     
-                    poss_it = set_difference(bag.begin(), bag.end(), v_vec.begin(), v_vec.end(), bag_minus_v.begin());
-                    bag_minus_v.resize(poss_it - bag_minus_v.begin());
+                    set_difference(bag.begin(), bag.end(), v_vec.begin(), v_vec.end(), back_inserter(bag_minus_v));
                     
-                    poss_it = set_union(g.begin(), g.end(), v_vec.begin(), v_vec.end(), g_union_v.begin());
-                    g_union_v.resize(poss_it - g_union_v.begin());
+                    set_union(g.begin(), g.end(), v_vec.begin(), v_vec.end(), back_inserter(g_union_v));
                     
-                    poss_it = set_union(nbrs.begin(), nbrs.end(), neighbours_vec.begin(), neighbours_vec.end(), nbrs_union_neighbours.begin());
-                    nbrs_union_neighbours.resize(poss_it - nbrs_union_neighbours.begin());
+                    set_union(nbrs.begin(), nbrs.end(), neighbours_vec.begin(), neighbours_vec.end(), back_inserter(nbrs_union_neighbours));
                     
+                    start = high_resolution_clock::now();
                     bag_s.push(bag_minus_v);
                     bag_s.push(bag_minus_v);
                     
@@ -106,6 +114,8 @@ namespace mrsuper {
                     
                     nbrs_s.push(nbrs);
                     nbrs_s.push(nbrs_union_neighbours);
+                    end = high_resolution_clock::now();
+                    push_time += duration_cast<nanoseconds>(end - start);
                     
 
                 } else if (maxsize >= g_weight && g_weight >= minsize) {
@@ -115,6 +125,7 @@ namespace mrsuper {
         }
         
         cout << "There are " << subGs.size() << " connected subgraphs found.\n";
+        cout << "Pushing onto stack time: " << push_time.count() << " nanoseconds.\n";
         /*for (vector<vector<Vertex>>::iterator it = subGs.begin(); it != subGs.end(); ++it) {
             vector<Vertex> sub = *it;
             for (vector<Vertex>::iterator it2 = sub.begin(); it2 != sub.end(); ++it2) {

@@ -16,7 +16,7 @@
 namespace mrsuper {
 struct VertexProperties {
     int idx;
-    int weight = 1;
+    int weight = 0;
 };
 
 struct EdgeProperties {
