@@ -8,104 +8,132 @@
 
 #include "algorithms.hpp"
 #include "graph.hpp"
-#include <set>
+#include "constants.hpp"
 #include <vector>
 #include <list>
-#include <tuple>
 #include <stack>
 #include <algorithm>
-#include <iostream>
-#include <chrono>
-#include <iterator>
+#include <bitset>
 
 using namespace std;
-using namespace std::chrono;
 
 namespace mrsuper {
-    int weight(Graph* G, vector<Vertex> g) {
-        if (!g.size() || !G->properties(*g.begin()).weight) {
-            return static_cast<int>(g.size());
-        }
-        else {
+    
+    int weight(Graph* G, bitset<MAXIMUM_ARRAY_SIZE>* g, array<Vertex, MAXIMUM_ARRAY_SIZE>* vertex_array) {
+        if (g->count() == 0 || !G->properties(vertex_array->at(0)).weight) {
+            return static_cast<int>(g->count());
+        } else {
             int w = 0;
-            vector<Vertex>::iterator g_it = g.begin();
-            for (; g_it != g.end(); ++g_it) {
-                VertexProperties p = G->properties(*g_it);
-                w += p.weight;
+            for (int i = 0; i < G->order(); ++i) {
+                if (g->test(i)) {
+                    w += G->properties(vertex_array->at(i)).weight;
+                }
             }
             return w;
         }
     }
     
+    int min_bitset(bitset<MAXIMUM_ARRAY_SIZE>* bs) {
+        for (int i = 0; i < MAXIMUM_ARRAY_SIZE; ++i) {
+            if (bs->test(i)) {
+                return i;
+            }
+        }
+        return -1;
+    }
     
+    vector<Vertex> bitset_to_vertices(bitset<MAXIMUM_ARRAY_SIZE>* subG, array<Vertex, MAXIMUM_ARRAY_SIZE>* vertex_array) {
+        vector<Vertex> vertices;
+        vertices.reserve(subG->count());
+#if (defined(__GNUC__) || defined(__GNUG__)) && !(defined(__clang__) || defined(__INTEL_COMPILER))
+        for (int i = subG->_Find_first(); i < subG->size(); i = subG->_Find_next(i)) {
+            vertices.push_back(vertex_array->at(i));
+        }
+#else
+        for (int i = 0; i < MAXIMUM_ARRAY_SIZE; ++i) {
+            if (subG->test(i)) {
+                vertices.push_back(vertex_array->at(i));
+            }
+        }
+#endif
+        return vertices;
+    }
     
-    void connected_subgraphs(Graph* G, vector<Vertex> bag, vector<Vertex> g, vector<Vertex> nbrs,
-                                            int minsize, int maxsize) {
+    void connected_subgraphs(Graph* G, bitset<MAXIMUM_ARRAY_SIZE> bag,
+                              bitset<MAXIMUM_ARRAY_SIZE> g,
+                              bitset<MAXIMUM_ARRAY_SIZE> nbrs, array<Vertex, MAXIMUM_ARRAY_SIZE>* vertex_array,
+                             int minsize, int maxsize, back_insert_iterator<vector<bitset<MAXIMUM_ARRAY_SIZE> > > subGs) {
         
-        list<vector<Vertex>> subGs;
-        nanoseconds push_time(0);
-        high_resolution_clock::time_point start, end;
-        // All future combinations of things should be in sorted order
-        sort(bag.begin(), bag.end());
-        sort(g.begin(), g.end());
-        sort(nbrs.begin(), nbrs.end());
+        stack<bitset<MAXIMUM_ARRAY_SIZE> > bag_s;
+        stack<bitset<MAXIMUM_ARRAY_SIZE> > g_s;
+        stack<bitset<MAXIMUM_ARRAY_SIZE> > nbrs_s;
         
-        cout << "Sort time: " << push_time.count() << " nanoseconds.\n";
-        
-        stack<vector<Vertex>> bag_s;
-        stack<vector<Vertex>> g_s;
-        stack<vector<Vertex>> nbrs_s;
         bag_s.push(bag);
         g_s.push(g);
         nbrs_s.push(nbrs);
         
-        vector<Vertex> bag_minus_v, g_union_v, nbrs_union_neighbours;
-        bag_minus_v.reserve(G->order());
-        g_union_v.reserve(G->order());
-        nbrs_union_neighbours.reserve(G->order());
+        bitset<MAXIMUM_ARRAY_SIZE> bag_minus_v, g_union_v, nbrs_union_neighbours,
+                                   poss, v_vec, neighbours_vec;
+        
+        bag_minus_v.reset();
+        g_union_v.reset();
+        nbrs_union_neighbours.reset();
+        poss.reset();
+        v_vec.reset();
+        neighbours_vec.reset();
         
         while (!bag_s.empty()) {
             bag = bag_s.top();
             bag_s.pop();
+            
             g = g_s.top();
             g_s.pop();
+            
             nbrs = nbrs_s.top();
             nbrs_s.pop();
             
-            vector<Vertex> poss;
-            
-            if (g.empty()) {
+            if (g.count() == 0) {
                 poss = bag;
             }
             else {
-                set_intersection(bag.begin(), bag.end(), nbrs.begin(), nbrs.end(), back_inserter(poss));
+                poss = bag & nbrs;
             }
             
-            int g_weight = weight(G, g);
-            
-            if (poss.empty() && !g.empty() && maxsize >= g_weight && g_weight >= minsize) {
-                subGs.push_back(g);
-            } else if (!poss.empty()) {
+            int g_weight = weight(G, &g, vertex_array);
+
+            if (poss.count() == 0 && g.count() != 0 && maxsize >= g_weight && g_weight >= minsize) {
+                subGs = g;
+                //subGs.push_back(g);
+            } else if (poss.count() != 0) {
                 if (g_weight <= maxsize) {
-                    Vertex v = *min_element(poss.begin(), poss.end());
+#if (defined(__GNUC__) || defined(__GNUG__)) && !(defined(__clang__) || defined(__INTEL_COMPILER))
+                    int j = poss._Find_first();
+#else
+                    int j = min_bitset(&poss);
+#endif
+                    Vertex v = vertex_array->at(j);
                     
-                    vector<Vertex> v_vec {v};
+                    v_vec.reset();
+                    v_vec[j] = 1;
                     
                     pair<NeighboursIt, NeighboursIt> np = G->neighbours(v);
-                    vector<Vertex> neighbours_vec(np.first, np.second);
-                    sort(neighbours_vec.begin(), neighbours_vec.end());
+                    neighbours_vec.reset();
+                    for (; np.first != np.second; ++np.first) {
+                        auto pos = find(vertex_array->begin(), vertex_array->begin() + G->order(), *np.first);
+                        if (pos != vertex_array->begin() + G->order()) {
+                            int idx = static_cast<int>(distance(vertex_array->begin(), pos));
+                            neighbours_vec[idx] = 1;
+                        }
+                    }
                     
-                    bag_minus_v.clear();
-                    g_union_v.clear();
-                    nbrs_union_neighbours.clear();
+                    bag_minus_v.reset();
+                    g_union_v.reset();
+                    nbrs_union_neighbours.reset();
                     
-                    set_difference(bag.begin(), bag.end(), v_vec.begin(), v_vec.end(), back_inserter(bag_minus_v));
+                    bag_minus_v = (bag ^ v_vec) & bag;
+                    g_union_v = g | v_vec;
+                    nbrs_union_neighbours = nbrs | neighbours_vec;
                     
-                    set_union(g.begin(), g.end(), v_vec.begin(), v_vec.end(), back_inserter(g_union_v));
-                    
-                    set_union(nbrs.begin(), nbrs.end(), neighbours_vec.begin(), neighbours_vec.end(), back_inserter(nbrs_union_neighbours));
-                    
-                    start = high_resolution_clock::now();
                     bag_s.push(bag_minus_v);
                     bag_s.push(bag_minus_v);
                     
@@ -114,28 +142,15 @@ namespace mrsuper {
                     
                     nbrs_s.push(nbrs);
                     nbrs_s.push(nbrs_union_neighbours);
-                    end = high_resolution_clock::now();
-                    push_time += duration_cast<nanoseconds>(end - start);
                     
-
+                    
                 } else if (maxsize >= g_weight && g_weight >= minsize) {
-                    subGs.push_back(g);
+                    subGs = g;
+                    //subGs.push_back(g);
                 }
             }
         }
         
-        cout << "There are " << subGs.size() << " connected subgraphs found.\n";
-        cout << "Pushing onto stack time: " << push_time.count() << " nanoseconds.\n";
-        /*for (vector<vector<Vertex>>::iterator it = subGs.begin(); it != subGs.end(); ++it) {
-            vector<Vertex> sub = *it;
-            for (vector<Vertex>::iterator it2 = sub.begin(); it2 != sub.end(); ++it2) {
-                Vertex v = *it2;
-                VertexProperties p = G.properties(v);
-                cout << " " << p.idx;
-            }
-            cout << "\n";
-        }
-         */
-        
     }
-}
+    
+} // end namespace mrsuper
